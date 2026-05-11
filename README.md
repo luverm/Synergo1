@@ -92,6 +92,61 @@ dus niet vanaf het netwerk.
   context wordt opgehaald.
 - Documenten kunnen weer worden verwijderd via de zijbalk.
 
+## Delen met collega's (Tailscale)
+
+De simpelste veilige manier om de chatbot met collega's te delen is via
+[Tailscale](https://tailscale.com), een mesh-VPN met end-to-end
+WireGuard-encryptie. Geen poort open op internet, toegang per identiteit,
+gratis voor kleine teams.
+
+1. Installeer Tailscale op de host die de chatbot draait:
+
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up
+   ```
+
+2. Lees het Tailscale-IP van deze machine:
+
+   ```bash
+   tailscale ip -4
+   ```
+
+3. Zet dat IP in `.env`:
+
+   ```
+   UI_BIND=100.x.y.z
+   ```
+
+4. Herstart de stack:
+
+   ```bash
+   docker compose up -d
+   ```
+
+5. Iedere collega installeert Tailscale op zijn eigen apparaat en logt in
+   met hetzelfde tailnet. Daarna openen ze `http://100.x.y.z:8501`.
+
+6. Toegang beheren (uitnodigen, intrekken, ACLs) doe je in de Tailscale
+   admin: <https://login.tailscale.com/admin/machines>.
+
+Waarom dit veilig is:
+
+- Geen enkele poort staat open op internet.
+- Verkeer is end-to-end versleuteld (WireGuard).
+- Toegang per gebruiker via Google/Microsoft/etc.-login; intrekken is
+  één klik.
+- De UI bindt enkel aan het Tailscale-interface; vanaf het reguliere
+  LAN is hij niet bereikbaar.
+
+Optioneel HTTPS in plaats van HTTP:
+
+```bash
+sudo tailscale serve --bg --https=443 http://localhost:8501
+```
+
+De UI is dan bereikbaar op `https://<machine>.<tailnet>.ts.net`.
+
 ## Andere modellen
 
 Pas in `.env` aan, bijvoorbeeld:
@@ -141,7 +196,8 @@ Alle endpoints behalve `/health` vereisen header `X-API-Key`.
 
 ## Wat is *niet* meegenomen
 
-- Multi-user accounts of rollen (gebruik is single-user, lokaal).
-- HTTPS - niet nodig op loopback. Wil je remote bereik, plaats dan een
-  reverse-proxy met TLS en client-cert auth ervoor.
+- Multi-user accounts of rollen - toegang gaat via de identity van
+  Tailscale (of single-user op loopback).
 - Rate limiting - voeg toe via een reverse proxy als je dat nodig hebt.
+- Audit-log per gebruiker - eventueel toe te voegen als FastAPI
+  middleware.
