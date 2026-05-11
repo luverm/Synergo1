@@ -1,0 +1,66 @@
+name: synergo
+
+services:
+  ollama:
+    image: ollama/ollama:0.4.2
+    container_name: synergo-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+      OLLAMA_KEEP_ALIVE: "30m"
+      OLLAMA_ORIGINS: "http://backend"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - synergo-net
+    # GEEN host port mapping - alleen bereikbaar binnen het docker network.
+
+  backend:
+    build: ./backend
+    container_name: synergo-backend
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      LLM_MODEL: "${LLM_MODEL:-llama3.2:3b}"
+      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-nomic-embed-text}"
+      CHROMA_PATH: "/data/chroma"
+      DOCUMENTS_PATH: "/data/documents"
+      API_KEY: "${API_KEY:?API_KEY is verplicht - kopieer .env.example naar .env en vul een sterke waarde in}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://localhost:8501}"
+      MAX_UPLOAD_MB: "${MAX_UPLOAD_MB:-25}"
+    volumes:
+      - chroma_data:/data/chroma
+      - documents_data:/data/documents
+    networks:
+      - synergo-net
+    security_opt:
+      - no-new-privileges:true
+    # GEEN host port mapping - alleen bereikbaar binnen het docker network.
+
+  frontend:
+    build: ./frontend
+    container_name: synergo-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: "http://backend:8000"
+      API_KEY: "${API_KEY:?API_KEY is verplicht}"
+    networks:
+      - synergo-net
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      # Alleen op de loopback van de host - GEEN externe toegang.
+      - "127.0.0.1:${UI_PORT:-8501}:8501"
+
+networks:
+  synergo-net:
+    driver: bridge
+
+volumes:
+  ollama_data:
+  chroma_data:
+  documents_data:
