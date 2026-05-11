@@ -1,203 +1,106 @@
 # Synergo - Lokale, veilige chatbot met kennisbank
 
-Een volledig lokaal gehoste chatbot met RAG-kennisbank. Geen cloud, geen
-telemetrie, geen data die je machine verlaat. Alles draait in Docker
-containers achter een loopback-binding.
-
-## Architectuur
-
-```
-+----------------------+
-|  Streamlit UI        |   127.0.0.1:8501  (alleen loopback)
-|  (frontend)          |
-+----------+-----------+
-           |  X-API-Key
-           v
-+----------------------+
-|  FastAPI backend     |   geen host-poort
-|  - /api/chat (RAG)   |
-|  - /api/kb/*         |
-+----+-------------+---+
-     |             |
-     v             v
-+---------+   +-------------+
-| Ollama  |   |  ChromaDB   |   geen host-poort
-| (LLM +  |   |  (lokaal,   |
-| embed)  |   |   persist.) |
-+---------+   +-------------+
-```
-
-Alle services praten over een privé Docker bridge-netwerk. Enkel de
-Streamlit UI is op `127.0.0.1:8501` bereikbaar - niet op `0.0.0.0`,
-dus niet vanaf het netwerk.
-
-## Beveiligingsmaatregelen
-
-- **Loopback-only**: enkel `127.0.0.1:8501` is bereikbaar; backend en
-  Ollama zijn nooit van buiten het docker-netwerk te benaderen.
-- **API key auth**: frontend en backend delen een `API_KEY`
-  (constant-time vergelijking). Backend weigert requests zonder key.
-- **Geen telemetrie**: ChromaDB anonymized telemetry uit, Streamlit
-  usage stats uit.
-- **Geen externe calls op runtime**: na het eenmalig pullen van de
-  Ollama-modellen praat het systeem nergens meer naar buiten.
-- **Container-hardening**: `no-new-privileges`, non-root user in
-  backend en frontend.
-- **Strikte CORS**: enkel de geconfigureerde UI origin mag de backend
-  aanspreken.
-- **Input-validatie**: bestandsnaam wordt gesaneerd, extensie en grootte
-  worden gevalideerd, document-id wordt gevalideerd als hex-uuid.
-- **XSRF**: ingeschakeld in Streamlit; CORS uit op de UI.
-- **Secrets**: `.env` staat in `.gitignore`; backend faalt bewust als er
-  geen `API_KEY` is gezet.
+Volledig lokaal: Ollama draait het taalmodel, Open WebUI is de
+chatinterface met ingebouwde RAG-kennisbank. Geen cloud, geen
+telemetrie, alles op je eigen machine.
 
 ## Vereisten
 
-- Docker en Docker Compose
+- Docker Desktop (Mac/Windows) of Docker Engine (Linux)
 - ~5 GB schijfruimte voor de standaardmodellen
-- Optioneel: NVIDIA GPU met `nvidia-container-toolkit` voor snellere
-  inferentie
 
-## Setup
+## Starten
 
-1. Kopieer en vul de env-file:
+```bash
+docker compose up -d
+```
 
-   ```bash
-   cp .env.example .env
-   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
-   ```
+Eerste keer duurt 1-2 minuten (image-download). Daarna open:
 
-   Plak de output in `.env` bij `API_KEY=`.
+**<http://127.0.0.1:3000>**
 
-2. Start de stack (eerste keer duurt langer, modellen worden gepulld):
+Op het eerste bezoek maak je een account aan - die wordt direct
+admin. Daarna log je in.
 
-   ```bash
-   docker compose up -d --build
-   ```
+## Een model installeren
 
-3. Open de UI op <http://127.0.0.1:8501>.
+Klik in Open WebUI op je profiel (links onderin) → **Settings** →
+**Models**. Type bijvoorbeeld `llama3.2:3b` en klik op de
+download-knop. Wacht tot het klaar is (~2 GB, 2-3 min).
 
-4. (Optioneel) Volg de logs:
+Goede modellen om mee te beginnen:
 
-   ```bash
-   docker compose logs -f backend
-   ```
+| Model         | Grootte | Geheugen | Snelheid |
+| ------------- | ------- | -------- | -------- |
+| `llama3.2:3b` | 2 GB    | 4 GB     | Snel     |
+| `llama3.1:8b` | 5 GB    | 8 GB     | Middel   |
+| `qwen2.5:7b`  | 4 GB    | 8 GB     | Middel   |
 
-## Gebruik
+## Kennis toevoegen
 
-- Stel vragen in het chatvenster.
-- Upload `.pdf`, `.txt` of `.md` documenten in de zijbalk en klik op
-  **Indexeren** om ze aan de kennisbank toe te voegen.
-- De toggle **Gebruik kennisbank bij beantwoorden** bepaalt of de
-  context wordt opgehaald.
-- Documenten kunnen weer worden verwijderd via de zijbalk.
+In Open WebUI:
+
+1. Klik linksboven op **Workspace** → **Knowledge**.
+2. **Create knowledge collection** met een naam, bv. "Bedrijfsbeleid".
+3. Sleep `.pdf`, `.txt`, `.md`, `.docx` bestanden in de collection.
+4. In een chat: type `#` en kies je collection om hem aan dit gesprek
+   te koppelen. De bot gebruikt dan die documenten als bron.
+
+## Beheer
+
+```bash
+docker compose stop          # pauze, data blijft
+docker compose start         # weer aan
+docker compose down          # containers weg, data blijft in volumes
+docker compose down -v       # alles wissen (chat, KB, modellen)
+docker compose logs -f       # zien wat er gebeurt
+```
 
 ## Delen met collega's (Tailscale)
 
-De simpelste veilige manier om de chatbot met collega's te delen is via
-[Tailscale](https://tailscale.com), een mesh-VPN met end-to-end
-WireGuard-encryptie. Geen poort open op internet, toegang per identiteit,
-gratis voor kleine teams.
+De simpelste veilige manier:
 
-1. Installeer Tailscale op de host die de chatbot draait:
-
+1. Installeer Tailscale op deze host:
    ```bash
    curl -fsSL https://tailscale.com/install.sh | sh
    sudo tailscale up
    ```
-
-2. Lees het Tailscale-IP van deze machine:
-
+2. Lees het Tailscale-IP:
    ```bash
    tailscale ip -4
    ```
-
-3. Zet dat IP in `.env`:
-
+3. Maak `.env` op basis van `.env.example` en zet:
    ```
    UI_BIND=100.x.y.z
    ```
-
-4. Herstart de stack:
-
+4. Herstart:
    ```bash
    docker compose up -d
    ```
-
-5. Iedere collega installeert Tailscale op zijn eigen apparaat en logt in
-   met hetzelfde tailnet. Daarna openen ze `http://100.x.y.z:8501`.
-
-6. Toegang beheren (uitnodigen, intrekken, ACLs) doe je in de Tailscale
-   admin: <https://login.tailscale.com/admin/machines>.
+5. Collega's installeren Tailscale op hun apparaat, joinen jouw
+   tailnet, en openen `http://100.x.y.z:3000`.
+6. Ze maken een account. Jij keurt ze goed in Open WebUI:
+   **Admin Panel** → **Users** → klik op "pending" naast hun naam.
+   Zo bepaal jij wie binnen mag.
 
 Waarom dit veilig is:
 
-- Geen enkele poort staat open op internet.
-- Verkeer is end-to-end versleuteld (WireGuard).
-- Toegang per gebruiker via Google/Microsoft/etc.-login; intrekken is
-  één klik.
-- De UI bindt enkel aan het Tailscale-interface; vanaf het reguliere
-  LAN is hij niet bereikbaar.
+- Geen poort open op internet (mesh-VPN, end-to-end versleuteld met WireGuard)
+- Toegang per persoon - intrekken via Tailscale of in Open WebUI Admin Panel
+- Open WebUI's signup is ingesteld op "pending"; alleen door admin goedgekeurde accounts kunnen chatten
 
-Optioneel HTTPS in plaats van HTTP:
+## Beveiligingsmaatregelen
 
-```bash
-sudo tailscale serve --bg --https=443 http://localhost:8501
-```
-
-De UI is dan bereikbaar op `https://<machine>.<tailnet>.ts.net`.
-
-## Andere modellen
-
-Pas in `.env` aan, bijvoorbeeld:
-
-```
-LLM_MODEL=llama3.1:8b
-EMBEDDING_MODEL=nomic-embed-text
-```
-
-Daarna `docker compose restart backend`. Op de eerste request worden
-ontbrekende modellen automatisch gepulld door Ollama.
-
-Voor GPU-acceleratie kun je deze sectie aan de `ollama`-service in
-`docker-compose.yml` toevoegen:
-
-```yaml
-deploy:
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: all
-          capabilities: [gpu]
-```
-
-## Data wissen
-
-Alle persistente data zit in named Docker volumes:
-
-```bash
-docker compose down -v
-```
-
-verwijdert chat-state, kennisbank, en gedownloade modellen.
-
-## API endpoints (backend, intern)
-
-| Methode | Pad                      | Beschrijving                   |
-| ------- | ------------------------ | ------------------------------ |
-| GET     | `/health`                | Liveness check                 |
-| POST    | `/api/chat`              | Chat-stream (NDJSON, RAG)      |
-| POST    | `/api/kb/upload`         | Upload document (multipart)    |
-| GET     | `/api/kb/documents`      | Lijst geindexeerde documenten  |
-| DELETE  | `/api/kb/documents/{id}` | Verwijder document uit KB      |
-
-Alle endpoints behalve `/health` vereisen header `X-API-Key`.
+- Default binding op `127.0.0.1` (alleen jouw machine)
+- Ollama heeft geen host-poort (alleen binnen docker network bereikbaar)
+- Telemetrie uit (`ANONYMIZED_TELEMETRY`, `SCARF_NO_ANALYTICS`, `DO_NOT_TRACK`)
+- Container hardening: `no-new-privileges`
+- Auth verplicht; nieuwe gebruikers staan op "pending" tot admin goedkeurt
+- `.env` staat in `.gitignore`
 
 ## Wat is *niet* meegenomen
 
-- Multi-user accounts of rollen - toegang gaat via de identity van
-  Tailscale (of single-user op loopback).
-- Rate limiting - voeg toe via een reverse proxy als je dat nodig hebt.
-- Audit-log per gebruiker - eventueel toe te voegen als FastAPI
-  middleware.
+- HTTPS - niet nodig op loopback; voor Tailscale gebruik
+  `tailscale serve --bg --https=443 http://localhost:3000` voor TLS.
+- Rate limiting - voeg toe via een reverse proxy als je dat nodig
+  hebt.
