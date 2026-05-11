@@ -19,8 +19,16 @@ class OllamaClient:
             "POST", f"{self.base_url}/api/pull", json={"name": model}
         ) as resp:
             resp.raise_for_status()
-            async for _ in resp.aiter_lines():
-                pass
+            async for line in resp.aiter_lines():
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                err = data.get("error")
+                if err:
+                    raise RuntimeError(f"Ollama pull mislukt voor {model}: {err}")
 
     async def embed(self, text: str) -> list[float]:
         r = await self.client.post(

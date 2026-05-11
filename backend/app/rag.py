@@ -10,7 +10,7 @@ _client = chromadb.PersistentClient(
     settings=ChromaSettings(anonymized_telemetry=False, allow_reset=False),
 )
 _collection = _client.get_or_create_collection(
-    name="kb",
+    name="knowledge_base",
     metadata={"hnsw:space": "cosine"},
 )
 
