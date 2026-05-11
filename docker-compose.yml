@@ -53,8 +53,9 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      # Alleen op de loopback van de host - GEEN externe toegang.
-      - "127.0.0.1:${UI_PORT:-8501}:8501"
+      # Bindt standaard alleen op loopback (alleen jouw machine).
+      # Voor delen via Tailscale: zet UI_BIND in .env op je Tailscale-IP.
+      - "${UI_BIND:-127.0.0.1}:${UI_PORT:-8501}:8501"
 
 networks:
   synergo-net:
